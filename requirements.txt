@@ -1,0 +1,12 @@
+pystac_client
+odc_geo
+odc_stac
+dask
+distributed
+netCDF4
+geopandas
+shapely
+xarray
+rioxarray
+numpy
+zarr
