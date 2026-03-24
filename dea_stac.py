@@ -923,8 +923,8 @@ def main(args):
             selected_bands = variables.all_bands
         else:
             parsed_bands = args.spectral_band.split(',')
-            selected_bands = [{'landsat': parsed_bands.extend([_band for _band in variables.cloud_mask_bands_ls if _band not in parsed_bands]), 
-                               'sentinel': parsed_bands.extend([_band for _band in variables.cloud_mask_bands_s2 if _band not in parsed_bands])}, 
+            selected_bands = [{'landsat': [*parsed_bands ,*[_band for _band in variables.cloud_mask_bands_ls if _band not in parsed_bands]], 
+                               'sentinel': [*parsed_bands, *[_band for _band in variables.cloud_mask_bands_s2 if _band not in parsed_bands]]}, 
                                parsed_bands + ['dataMask', 'cloudcover']]
             
         # Set the band based on the algorithm
