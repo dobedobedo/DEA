@@ -760,7 +760,7 @@ def save_crs(ds):
 
 def update_dtype(ds, args):
     for var in ds:
-        if var in ['dataMask', 'cloudcover', 'geom']:
+        if var in ['cloudcover', 'geom']:
             ds[var] = ds[var].astype(np.int8)
         elif var in args.algorithm:
             ds[var] = ds[var].astype(np.float32)
