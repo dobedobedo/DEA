@@ -873,8 +873,9 @@ def workflow(args, geom, selected_bands, feature_id=None, fail_on_error=True):
         # Calculate cloud cover percentage
         cc = (1 - (ds_proj.dataMask.sum(dim=['x', 'y']) / ds_proj.geom.sum(dim=['x', 'y']))) * 100
         
-        # Assign cloud cover as a variable
-        ds_proj['cloudcover'] = cc.compute().astype(np.int8)
+        # Assign cloud cover as a coordinate
+        cloudcover = cc.compute().astype(np.int8)
+        ds_proj = ds_proj.assign_coords(cloudcover=cloudcover)
 
         # Remove dtype encoding if there is any
         ds_proj = update_dtype(ds_proj, args)
