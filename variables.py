@@ -25,12 +25,12 @@ query_bands_bgrn_ls = ['nbart_blue', 'nbart_green', 'nbart_red', 'nbart_nir', 'n
 lsband_rename_table = {'nbart_nir': 'nbart_nir_1', 'nbart_swir_1': 'nbart_swir_2', 'nbart_swir_2': 'nbart_swir_3'}
 
 output_bands_common = ['nbart_blue', 'nbart_green', 'nbart_red', 'nbart_nir_1', 
-                       'nbart_swir_2', 'nbart_swir_3', 'dataMask', 'cloudcover']
+                       'nbart_swir_2', 'nbart_swir_3', 'dataMask']
 output_bands_all = ['nbart_blue', 'nbart_green', 'nbart_red', 
                     'nbart_red_edge_1', 'nbart_red_edge_2', 'nbart_red_edge_3', 
-                    'nbart_nir_1', 'nbart_nir_2', 'nbart_swir_2', 'nbart_swir_3', 'dataMask', 'cloudcover']
-output_bands_rgb = ['nbart_red', 'nbart_green', 'nbart_blue', 'dataMask', 'cloudcover']
-output_bands_bgrn = ['nbart_blue', 'nbart_green', 'nbart_red', 'nbart_nir_1', 'dataMask', 'cloudcover']
+                    'nbart_nir_1', 'nbart_nir_2', 'nbart_swir_2', 'nbart_swir_3', 'dataMask']
+output_bands_rgb = ['nbart_red', 'nbart_green', 'nbart_blue', 'dataMask']
+output_bands_bgrn = ['nbart_blue', 'nbart_green', 'nbart_red', 'nbart_nir_1', 'dataMask']
 
 sunglint_bands = ['oa_solar_zenith', 'oa_solar_azimuth', 'oa_satellite_azimuth', 'oa_satellite_view']
 
