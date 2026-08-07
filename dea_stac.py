@@ -16,6 +16,7 @@ import tempfile
 import logging
 import datetime
 import functools
+import re
 
 import pystac_client
 from odc.geo import xr, geobox
@@ -770,6 +771,36 @@ def update_dtype(ds, args):
     return ds
 
 
+def sanitise_filename(name: str | None) -> str:
+    if name is None:
+        return "unnamed"
+    """
+    Convert a string to a filename-safe string for Windows and Linux.
+    """
+    name = name.strip()
+
+    # Replace anything except letters, numbers, _, -, and . with _
+    name = re.sub(r"[^\w.-]+", "_", name)
+
+    # Collapse consecutive underscores
+    name = re.sub(r"_+", "_", name)
+
+    # Remove leading/trailing dots and underscores
+    name = name.strip("._")
+
+    # Windows reserved device names
+    reserved = {
+        "CON", "PRN", "AUX", "NUL",
+        *(f"COM{i}" for i in range(1, 10)),
+        *(f"LPT{i}" for i in range(1, 10)),
+    }
+
+    if name.upper() in reserved:
+        name = f"_{name}"
+
+    return name or "unnamed"
+
+
 # A function to retry
 def retry(times):
 
@@ -948,7 +979,12 @@ def main(args):
                 # Add every feature to the list
                 geom = list()
                 for feature in gdf_wgs84.itertuples():
-                    feature_id = feature.Index
+                    if args.fid_column is not None and args.fid_column in gdf_wgs84.columns:
+                        feature_id = getattr(feature, args.fid_column)
+                        # Make the feature_id filename safe
+                        feature_id = sanitise_filename(str(feature_id))
+                    else:
+                        feature_id = feature.Index
                     feature_geom = feature.geometry
                     # Drop Z dimension if there is any
                     feature_geom = shapely.force_2d(feature_geom)
@@ -1055,6 +1091,12 @@ if __name__ == '__main__':
     parser.add_argument('-of', '--out_file', type=str, 
                         help="The basename of the output images. Default to 'output'", 
                         default='output')
+
+    # Argument for output feature ID
+    parser.add_argument('-fc', '--fid_column', type=str, 
+                        help="When union is not specified, the default output filename is <out_file>_<fid>. \n"\
+                             "If fid_column is specified it will try to use the value from that column to replace fid", 
+                        default=None)
     
     # Argument for output file basename
     parser.add_argument('-ox', '--out_ext', type=str, 
