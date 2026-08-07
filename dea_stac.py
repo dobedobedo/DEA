@@ -490,62 +490,72 @@ def get_dataset(args, geom_geobox, geom, selected_bands, feature_id=None, tmp_di
             ds = save_crs(ds)
 
         else:
-            with tempfile.TemporaryDirectory(dir=tmp_dir) as time_slice_dir:
-                for date_start, date_end in request_dates:
-                    _ds = get_annual_dataset(args, date_start, date_end, geom_geobox, geom, selected_bands, fail_on_error=fail_on_error)
-                    if _ds is not None:
-                        tmp_file = Path(time_slice_dir) / f"{feature_id}_{'_'.join([str(pp) for pp in geom_geobox.boundingbox])}_{date_start.replace('-', '')}_{date_end.replace('-', '')}.zarr"
-                        # Compress the data with built-in zlib method
-                        comp = dict(zlib=True, complevel=2, fletcher32=True)
+            tmp_file = (
+                Path(tmp_dir)
+                / f"{feature_id}_{'_'.join([str(pp) for pp in geom_geobox.boundingbox])}.zarr"
+            )
 
-                        # Save spatial information using CF convention
-                        _ds = save_crs(_ds)
-                        
-                        for var in _ds: 
-                            _ds[var].encoding.update(comp)
-                        print(f'Saving temprary file to {tmp_file}')
-                        _ds.to_zarr(tmp_file)
-                        print(f'{tmp_file} was saved.')
-                        _ds.close()
-                
-                print('Combining the datasets from different time range...')
-                
-                # Delayed loading the dataset with dask chunks
-                try:
-                    ds = xarray.open_mfdataset(Path(time_slice_dir).glob(f"{feature_id}_{'_'.join([str(pp) for pp in geom_geobox.boundingbox])}_*.zarr"), 
-                                            engine='zarr', parallel=True).chunk({'time': -1})
-                    
-                except OSError:
-                    print('No dataset was found.')
-                    return
-                
-                # Save spatial information using CF convention
-                ds = update_dtype(ds, args)
-                ds = save_crs(ds)
+            first_write = True
+            found_data = False
 
-                if tmp_dir:
-                    tmp_file = Path(tmp_dir) / f"{feature_id}_{'_'.join([str(pp) for pp in geom_geobox.boundingbox])}.zarr"
-                    print(f'Saving temprary file to {tmp_file}')
+            for date_start, date_end in request_dates:
+                _ds = get_annual_dataset(
+                    args,
+                    date_start,
+                    date_end,
+                    geom_geobox,
+                    geom,
+                    selected_bands,
+                    fail_on_error=fail_on_error,
+                )
 
-                    # Compress the data with built-in zlib method
-                    comp = dict(zlib=True, complevel=2, fletcher32=True)
-                    
-                    for var in ds: 
-                        ds[var].encoding.update(comp)
-                    
-                    ds.to_zarr(tmp_file)
-                    print(f'{tmp_file} was saved.')
-                    ds.close()
+                if _ds is None:
+                    continue
 
-                    if len(args.algorithm) == 0:
-                        return
-                    else:
-                        with xarray.open_dataset(tmp_file, engine='zarr') as Dataset:
-                            ds = Dataset.load()
+                found_data = True
+
+                # Save spatial information
+                _ds = update_dtype(_ds, args)
+                _ds = save_crs(_ds)
+
+                comp = dict(
+                    zlib=True,
+                    complevel=2,
+                    fletcher32=True,
+                )
+
+                for var in _ds:
+                    _ds[var].encoding.update(comp)
+
+                print(
+                    f"Saving {date_start} - {date_end} "
+                    f"to temporary file {tmp_file}"
+                )
+
+                if first_write:
+                    _ds.to_zarr(
+                        tmp_file,
+                        mode="w",
+                    )
+                    first_write = False
                 else:
-                    ds_memory = ds.compute()
-                    ds.close()
-                    ds = ds_memory
+                    _ds.to_zarr(
+                        tmp_file,
+                        mode="a-",
+                        append_dim="time",
+                    )
+
+                _ds.close()
+                del _ds
+
+            if not found_data:
+                print("No dataset was found.")
+                return
+
+            if len(args.algorithm) == 0:
+                return
+            else:
+                ds = xarray.open_dataset(tmp_file, engine='zarr', parallel=True)
 
     # Apply algorithm if specified
     if len(args.algorithm) > 0:
@@ -577,6 +587,11 @@ def get_dataset(args, geom_geobox, geom, selected_bands, feature_id=None, tmp_di
             
             for var in ds: 
                 ds[var].encoding.update(comp)
+
+            # Close the original file before overwriting
+            ds_memory = ds.compute()
+            ds.close()
+            ds = ds_memory
             
             ds.to_zarr(tmp_file, mode='w')
             print(f'{tmp_file} was saved.')
