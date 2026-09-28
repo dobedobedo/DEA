@@ -139,48 +139,6 @@ def load_as_datacube(query_items, bbox):
     return ds
 
 
-def save_crs(ds):
-    # Save the spatial information following CF convention standard
-    # Create the CRS coordinate with the necessary attributes
-    spatial_dims = ds.odc.spatial_dims
-    ds = ds.rio.set_spatial_dims(x_dim=spatial_dims[1], y_dim=spatial_dims[0])
-    ds = ds.rio.write_coordinate_system()
-    
-    crs = CRS(ds.rio.crs.to_string())
-    crs_attrs = {
-        'grid_mapping_name': crs.coordinate_system.name if crs.coordinate_system else 'unknown',
-        'epsg_code': crs.to_epsg(),
-        'spatial_ref': crs.to_wkt()
-    }
-
-    # Additional attributes based on CRS information
-    if crs.is_geographic:
-        crs_attrs['semi_major_axis'] = crs.ellipsoid.semi_major_metre if crs.ellipsoid else None
-        crs_attrs['inverse_flattening'] = crs.ellipsoid.inverse_flattening if crs.ellipsoid else None
-    elif crs.is_projected:
-        # Add attributes relevant to projected CRS
-        crs_attrs['proj_name'] = crs.to_dict().get('proj')
-        datum = crs.to_dict().get('datum')
-        if not datum:
-            datum = 'GDA2020'
-        crs_attrs['datum'] = datum
-        crs_attrs['units'] = crs.to_dict().get('units')
-
-    # Create the crs coordinate
-    crs_coord = xarray.DataArray(0, name='crs', attrs=crs_attrs)
-
-    # Add the crs coordinate to the dataset
-    ds = ds.assign_coords(crs=crs_coord)
-    for _var in ds:
-        ds[_var].attrs['grid_mapping'] = 'crs'
-        try:
-            del ds[_var].encoding['grid_mapping']
-        except KeyError:
-            pass
-    
-    return ds
-
-
 def export_data(ds, out_dir, out_file):
     # Compute the data
     print('Computing the final dataset...')
@@ -209,7 +167,7 @@ def workflow(collections, geom, out_dir, out_file):
     pages = get_stac_pages(collections, geom)
     items = get_stac_items(pages)
     ds = load_as_datacube(items, bbox_3577)
-    ds = save_crs(ds)
+    ds = utils.save_crs(ds)
     export_data(ds, out_dir, out_file)
     return
 
