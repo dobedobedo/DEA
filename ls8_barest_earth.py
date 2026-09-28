@@ -208,7 +208,7 @@ def main(vector, out_dir, out_file, union=False, fid_column=None, collections=co
             print(f'Found {len(geom)} features.')
             result = list()
             with concurrent.futures.ThreadPoolExecutor(max_workers=TASK_LIMIT) as executor:
-                futures = [executor.submit(workflow, _geom, out_dir, out_file) for _geom in geom]
+                futures = [executor.submit(workflow, collections, _geom, out_dir, f"{out_file}_{_fid}") for _fid, _geom in geom]
                 for future in concurrent.futures.as_completed(futures):
                     ds = future.result()
                     result.append(ds)
