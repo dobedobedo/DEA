@@ -51,40 +51,6 @@ size_limit = 2000
 TASK_LIMIT = 5
 
 
-class MyHTMLParser(HTMLParser):
-    def __init__(self):
-        HTMLParser.__init__(self)
-        self.recording = 0
-        self.data = list()
-    def handle_starttag(self, tag, attrs):
-        if tag == 'title':
-            self.recording = 1
-    def handle_endtag(self, tag):
-        if tag == 'title':
-            self.recording -= 1
-    def handle_data(self, data):
-        if self.recording:
-            self.data.append(data)
-
-
-class VerifyNoBbox(argparse.Action):
-    def __call__(self, parser, args, values, option_string=None):
-        # print 'No: {n} {v} {o}'.format(n=args, v=values, o=option_string)
-        if args.bbox is not None:
-            parser.error(
-                '--bbox should not be used with --vector')
-        setattr(args, self.dest, values)
-
-
-class VerifyNoVector(argparse.Action):
-    def __call__(self, parser, args, values, option_string=None):
-        # print 'No: {n} {v} {o}'.format(n=args, v=values, o=option_string)
-        if args.vector is not None:
-            parser.error(
-                '--vector should not be used with --bbox')
-        setattr(args, self.dest, values)
-
-
 class VerifyTilesize(argparse.Action):
     def __call__(self, parser, args, values, option_string=None):
         # print 'No: {n} {v} {o}'.format(n=args, v=values, o=option_string)
@@ -129,7 +95,7 @@ def get_stac_pages(collections, geom, date_start, date_end):
         
         except pystac_client.exceptions.APIError as e:
             # Retry if encountering API error
-            htmlparser = MyHTMLParser()
+            htmlparser = utils.MyHTMLParser()
             htmlparser.feed(str(e))
 
             try:
@@ -158,7 +124,7 @@ def get_stac_items(pages):
             return items
         except pystac_client.exceptions.APIError as e:
             # Retry the same page if encountering API error. 
-            htmlparser = MyHTMLParser()
+            htmlparser = utils.MyHTMLParser()
             htmlparser.feed(str(e))
 
             print(f'API error: \n{htmlparser.data[0]}')
@@ -953,7 +919,7 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--vector', type=str, 
                         help="Path to the vector file of area of interest. Cannot be used with --bbox\n" \
                              "If --vector and --bbox are not specified, read the data for whole Australia.", 
-                        action=VerifyNoBbox)
+                        action=utils.VerifyNoBbox)
     
     # Argument for vector union operation
     parser.add_argument('--union', action='store_true', 
@@ -965,7 +931,7 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--bbox', type=str, 
                         help="Bounding box in the format of <lon_min>,<lat_min>,<lon_max>,<lat_max>. Cannot be used with --vector\n" \
                              "If --vector and --bbox are not specified, read the data for whole Australia.", 
-                        action=VerifyNoVector)
+                        action=utils.VerifyNoVector)
     
     # Argument for the STAC collections
     parser.add_argument('-c', '--collection', type=str, 

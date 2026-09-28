@@ -1,5 +1,7 @@
 from pathlib import Path
 import re
+from html.parser import HTMLParser
+import argparse
 
 import geopandas as gpd
 import shapely
@@ -7,6 +9,40 @@ from pyproj import CRS
 from odc.geo import xr
 import xarray
 import numpy as np
+
+
+class MyHTMLParser(HTMLParser):
+    def __init__(self):
+        HTMLParser.__init__(self)
+        self.recording = 0
+        self.data = list()
+    def handle_starttag(self, tag, attrs):
+        if tag == 'title':
+            self.recording = 1
+    def handle_endtag(self, tag):
+        if tag == 'title':
+            self.recording -= 1
+    def handle_data(self, data):
+        if self.recording:
+            self.data.append(data)
+
+
+class VerifyNoBbox(argparse.Action):
+    def __call__(self, parser, args, values, option_string=None):
+        # print 'No: {n} {v} {o}'.format(n=args, v=values, o=option_string)
+        if args.bbox is not None:
+            parser.error(
+                '--bbox should not be used with --vector')
+        setattr(args, self.dest, values)
+
+
+class VerifyNoVector(argparse.Action):
+    def __call__(self, parser, args, values, option_string=None):
+        # print 'No: {n} {v} {o}'.format(n=args, v=values, o=option_string)
+        if args.vector is not None:
+            parser.error(
+                '--vector should not be used with --bbox')
+        setattr(args, self.dest, values)
 
 
 def find_appropriate_crs(geom):
