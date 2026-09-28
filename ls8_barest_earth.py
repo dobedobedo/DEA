@@ -29,22 +29,6 @@ collections = ["landsat_barest_earth"] # V2.1.2
 TASK_LIMIT = 5
 
 
-class MyHTMLParser(HTMLParser):
-    def __init__(self):
-        HTMLParser.__init__(self)
-        self.recording = 0
-        self.data = list()
-    def handle_starttag(self, tag, attrs):
-        if tag == 'title':
-            self.recording = 1
-    def handle_endtag(self, tag):
-        if tag == 'title':
-            self.recording -= 1
-    def handle_data(self, data):
-        if self.recording:
-            self.data.append(data)
-
-
 def get_stac_pages(collections, geom):
     while True:
         try: 
@@ -67,7 +51,7 @@ def get_stac_pages(collections, geom):
         
         except pystac_client.exceptions.APIError as e:
             # Retry if encountering API error
-            htmlparser = MyHTMLParser()
+            htmlparser = utils.MyHTMLParser()
             htmlparser.feed(str(e))
 
             try:
@@ -96,7 +80,7 @@ def get_stac_items(pages):
             return items
         except pystac_client.exceptions.APIError as e:
             # Retry the same page if encountering API error. 
-            htmlparser = MyHTMLParser()
+            htmlparser = utils.MyHTMLParser()
             htmlparser.feed(str(e))
 
             print(f'API error: \n{htmlparser.data[0]}')
@@ -172,43 +156,54 @@ def workflow(collections, geom, out_dir, out_file):
     return
 
 
-def main(vector, out_dir, out_file, union=False, fid_column=None, collections=collections):
+def main(vector, bbox, out_dir, out_file, union=False, fid_column=None, collections=collections):
     # odc-stac library downloads DEA datasets stored in AWS
     # when external to AWS (like outside DEA sandbox), AWS signed requests must be disabled
     with rasterio.env.Env(aws_unsigned=True):
         # Parse the input geometry
-        gdf = gpd.read_file(vector)
-        # Make sure the CRS is EPSG:4326
-        gdf_wgs84 = gdf.to_crs('EPSG:4326')
-        if union:
-            geom = gdf_wgs84.union_all()
-            # Drop Z dimension if there is any
-            geom = shapely.force_2d(geom)
+        if vector is not None:
+            gdf = gpd.read_file(vector)
+            # Make sure the CRS is EPSG:4326
+            gdf_wgs84 = gdf.to_crs('EPSG:4326')
+            if union:
+                geom = gdf_wgs84.union_all()
+                # Drop Z dimension if there is any
+                geom = shapely.force_2d(geom)
+                # Assign CRS
+                geom = odc.geo.geom.Geometry(geom, crs='EPSG:4326')
+            else:
+                # Add every feature to the list
+                geom = list()
+                for feature in gdf_wgs84.itertuples():
+                    if fid_column is not None and fid_column in gdf_wgs84.columns:
+                        feature_id = getattr(feature, fid_column)
+                        # Make the feature_id filename safe
+                        feature_id = utils.sanitise_filename(str(feature_id))
+                    else:
+                        feature_id = feature.Index
+                    feature_geom = feature.geometry
+                    # Drop Z dimension if there is any
+                    feature_geom = shapely.force_2d(feature_geom)
+                    # Assign CRS
+                    feature_geom = odc.geo.geom.Geometry(feature_geom, crs='EPSG:4326')
+                    geom.append((feature_id, feature_geom))
+
+        elif bbox is not None:
+            # Create geometry based on the input bounding box
+            geom = shapely.geometry.box(*[float(pp) for pp in args.bbox.split(',')])
             # Assign CRS
             geom = odc.geo.geom.Geometry(geom, crs='EPSG:4326')
         else:
-            # Add every feature to the list
-            geom = list()
-            for feature in gdf_wgs84.itertuples():
-                if fid_column is not None and fid_column in gdf_wgs84.columns:
-                    feature_id = getattr(feature, fid_column)
-                    # Make the feature_id filename safe
-                    feature_id = utils.sanitise_filename(str(feature_id))
-                else:
-                    feature_id = feature.Index
-                feature_geom = feature.geometry
-                # Drop Z dimension if there is any
-                feature_geom = shapely.force_2d(feature_geom)
-                # Assign CRS
-                feature_geom = odc.geo.geom.Geometry(feature_geom, crs='EPSG:4326')
-                geom.append((feature_id, feature_geom))
+            # Create geometry for the whole Australia if both --vector and --bbox are not specified
+            raise ValueError('Did not receive either --vector or --bbox input')
 
         # Process every features if there are many
         if isinstance(geom, list):
             print(f'Found {len(geom)} features.')
             result = list()
             with concurrent.futures.ThreadPoolExecutor(max_workers=TASK_LIMIT) as executor:
-                futures = [executor.submit(workflow, collections, _geom, out_dir, f"{out_file}_{_fid}") for _fid, _geom in geom]
+                futures = [executor.submit(workflow, collections, _geom, 
+                                           Path(out_dir) / f"{out_file}_{_fid}", f"{out_file}_{_fid}") for _fid, _geom in geom]
                 for future in concurrent.futures.as_completed(futures):
                     ds = future.result()
                     result.append(ds)
@@ -226,23 +221,30 @@ if __name__ == '__main__':
                                      formatter_class=RawTextHelpFormatter)
 
     # Argument for the vector file of the area of interest
-    parser.add_argument('vector', type=str, 
-                        help="Path to the vector file of area of interest.")
+    parser.add_argument('-v', '--vector', type=str, 
+                        help="Path to the vector file of area of interest. Cannot be used with --bbox", 
+                        action=utils.VerifyNoBbox)
+
+    # Argument for vector union operation
+    parser.add_argument('--union', action='store_true', 
+                        help="By default, the program will loop through every geometry of the input vector file to retrieve data. \n" \
+                             "If --union is specified, create union geometry of the input vector.\n" \
+                             "If it is not used with --vector, this argument will be ignored.")
+
+    # Argument for the bounding box of the area of interest
+    parser.add_argument('-b', '--bbox', type=str, 
+                        help="Bounding box in the format of <lon_min>,<lat_min>,<lon_max>,<lat_max>. Cannot be used with --vector", 
+                        action=utils.VerifyNoVector)
 
     # Argument for output directory
-    parser.add_argument('out_dir', type=Path, 
+    parser.add_argument('-od', '--out_dir', type=Path, 
                         help="Output directory. Default to user home directory.", 
                         default=Path.home())
     
     # Argument for output file basename
-    parser.add_argument('out_file', type=str, 
+    parser.add_argument('-of', '--out_file', type=str, 
                         help="The basename of the output images. Default to 'output'", 
                         default='output')
-    
-    # Argument for vector union operation
-    parser.add_argument('--union', action='store_true', 
-                        help="By default, the program will loop through every geometry of the input vector file to retrieve data. \n" \
-                             "If --union is specified, create union geometry of the input vector.")
 
     # Argument for output feature ID
     parser.add_argument('-fc', '--fid_column', type=str, 
@@ -252,4 +254,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     
-    main(args.vector, args.out_dir, args.out_file, args.union, args.fid_column)
+    main(args.vector, args.bbox, args.out_dir, args.out_file, args.union, args.fid_column)
